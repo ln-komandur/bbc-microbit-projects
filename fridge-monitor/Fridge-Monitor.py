@@ -3,8 +3,8 @@
      
     $ python3 Fridge-Monitor.py
     
-    to read the temperature and position of the BBC Micro:bit placed in the fridge door and connected via BLE to this program,
-    output the readings to the terminal, and write the temperature upon door opening and closing in a CSV file
+    to read the temperature and position of the BBC Micro:bit placed in the fridge door and connected via BLE to this program. 
+    Output the readings to the terminal, and write the temperature and time to a CSV file only when the door is opened or closed 
      
     Copyright (C) 2020  L Komandur
     This program is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ from bluezero import microbit
 import math
 
 mcrbt = microbit.Microbit(adapter_addr='RA:SP:BE:RR:YP:I0', # Controller address (Raspberry Pi or PC) that reads from micro:bit. 
-                         device_addr='BB:CM:IC:RO:BI:T0', # micro:bit BLE address. Get from bluetoothctl or other similar ways.
+                         device_addr='BB:CM:IC:RO:BI:T0', # micro:bit BLE address. Get from $ bluetoothctl or other similar ways.
                          accelerometer_service=True,
                          button_service=True,
                          led_service=False,
