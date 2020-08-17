@@ -28,56 +28,79 @@ import math
 
 mcrbt = microbit.Microbit(adapter_addr='RA:SP:BE:RR:YP:I0', # Controller address (Raspberry Pi or PC) that reads from micro:bit. 
                          device_addr='BB:CM:IC:RO:BI:T0', # micro:bit BLE address. Get from $ bluetoothctl or other similar ways.
-                         accelerometer_service=True,
+                         accelerometer_service=False,
                          button_service=True,
                          led_service=False,
                          magnetometer_service=True,
                          pin_service=False,
                          temperature_service=True)
 
-looping = True
-started = True
-mcrbt.connect()
-print('Connected !! Monitoring started. Press both buttons A & B to exit')
+def printVitals(status):
+    print( ' Time: ', now, ' Door Closed: ', status, ' Current X: ', mx, ' Closed X: ', closedX,' Temperature: ', celcius)
+    
+def writeVitals(status):
+    writer.writerow([status, now, celcius])
 
+def doorEvent(isClosed):    # A door even happened
+    if (doorClosed != isClosed):
+        if isClosed:
+             printVitals('Closed')
+             writeVitals('Closed')
+        else:
+             printVitals('Open')
+             writeVitals('Open')
+
+looping = True
+mcrbt.connect()
+print('Connected !! Waiting 3 seconds to take first reading')
+time.sleep(3) # Wait before taking the first reading
+print('Taking readings. Press both buttons to stop monitoring')
 doorClosed = False
-inherentShakeFactor = 2
-closedXYZ = 0
+generalDoorShake = 2
+closedX = 0
 previousCelcius = 0
 
-with open('/home/pi/Desktop/microbit/csv-data/fridge-livedata.csv', 'w', newline='') as file:
+with open('/home/username-or-whatever/Desktop/microbit-ble/fridge-livedata-v1-3.csv', 'w', newline='') as file:
     writer = csv.writer(file, delimiter=',')
-    writer.writerow(["Door", "Timestamp", "Temperature"])
-
+    writer.writerow(["Door Position", "Timestamp", "Temperature"])
     while looping:
-        if mcrbt.button_a > 0 or mcrbt.button_b > 0:
-                started = True
+        now = datetime.now().strftime('%H:%M:%S')
+        mx, my, mz = mcrbt.magnetometer
+        time.sleep(1) # Wait before taking the temperature
+        celcius = mcrbt.temperature
+
+        if closedX == 0: # this is to help the first time the readings are taken. Store the initial door position and mark door as closed
+                closedX = mx
+                print('Initializing door as closed')
+                doorEvent(True) #  Fire a doorEvent() as the door was open before
+                doorClosed = True # Mark door as closed.
         if mcrbt.button_a > 0 and mcrbt.button_b > 0:
                 looping = False
-                started = False
                 print('Exiting.')
-        if started:
-                now = datetime.now().strftime('%H:%M:%S')
-                ax, ay, az = mcrbt.accelerometer
-                mx, my, mz = mcrbt.magnetometer
-                celcius = mcrbt.temperature
-                currentXYZ =  round(math.sqrt(mx*mx + my * my + mz * mz))
-                if closedXYZ == 0:
-                        closedXYZ = currentXYZ
-                print('Curr XYZ ',currentXYZ, ' Closed XYZ', closedXYZ, ' Prev Celcius ', previousCelcius, ' Curr Celcius ', celcius, ' Door ', doorClosed)
-                if celcius > previousCelcius:
-                        doorClosed = False
-                elif celcius < previousCelcius:
-                        closedXYZ = currentXYZ
-                        if not doorClosed:
-                                doorClosed = True
-                                print('Door is now Closed. XYZ ', closedXYZ, ' Time ', now, ' Temperature ', celcius)
-                                writer.writerow(["Closed", now, celcius])
-
-                if doorClosed and ( currentXYZ  < (closedXYZ - inherentShakeFactor) or currentXYZ  > (closedXYZ + inherentShakeFactor)):
-                        print('Door is now Open. XYZ ', closedXYZ, ' Time ', now, ' Temperature ', celcius)
-                        writer.writerow(["Open", now, celcius])
-                        doorClosed = False
-                previousCelcius = celcius
-                time.sleep(1)
+        if looping:
+                if ( abs(mx)  >= abs(closedX) - abs(generalDoorShake) and abs(mx)  <= abs(closedX) + abs(generalDoorShake)): # door position is within the limits of general shake from closedX. abs value is taken as the sign of closedX could be anything. Means no door event occured
+                       #print('WITHIN the limits of general shake. NOT refining closedX')
+                       if not doorClosed:
+                              print('Marking Door Closed')
+                              doorEvent(True)  # Fire a doorEvent() as the door was open before
+                       doorClosed = True # Mark door as closed. Not a door event, but just ensuring correct status
+                if (celcius < previousCelcius): # is Colder
+                       closedX = mx # if the temperature is reducing, refine the closed door position repeatedly. 
+                       if not doorClosed:
+                              print('Marking Door Closed')
+                              doorEvent(True)  # Fire a doorEvent() as the door was open before
+                              doorClosed = True # Mark the door as closed as it is not already because the temperature is lowering.       
+                       else:
+                              printVitals('Lowering')
+                              writeVitals('Lowering')                              
+                              # Temperature is lowering. Door is closed. Write some logic to track lowest temperature
+                #if (celcius >= previousCelcius): print('Same temperature or warmer. Do nothing as we dont know if the door is closed or open')
+                if ( abs(mx)  < abs(closedX) - abs(generalDoorShake) or abs(mx)  > abs(closedX) + abs(generalDoorShake)): 
+                       # if there's more shake than general shake from closedX
+                       print('OUTSIDE the limits of general shake from closedX. Marking door as OPEN')
+                       doorEvent(False) # Door is open, fire a doorEvent()
+                       doorClosed = False # Mark the door as open
+                time.sleep(1) # Wait before taking the next reading
+                previousCelcius = celcius # Set previous reading to current value for comparing in the next cycle 
+              
 mcrbt.disconnect()
