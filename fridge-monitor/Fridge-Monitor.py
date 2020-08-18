@@ -35,6 +35,18 @@ mcrbt = microbit.Microbit(adapter_addr='RA:SP:BE:RR:YP:I0', # Controller address
                          pin_service=False,
                          temperature_service=True)
 
+
+#myNextCloudUserID name for nextcloud server on raspberry pi
+myNextCloudUserID = 'ausername' 
+
+#myNextCloudPassword for nextcloud server on raspberry pi
+myNextCloudPassword = 'itspasswd'
+
+headers = {'Content-Type': 'application/json'}
+
+#myNextCloudServerURL appended with the location (end point) of the analytics report
+url = 'https://<IP address>:<port no>/<report end point>'
+
 def printVitals(status):
     print( ' Time: ', now, ' Door Closed: ', status, ' Current X: ', mx, ' Closed X: ', closedX,' Temperature: ', celcius)
     
@@ -46,9 +58,18 @@ def doorEvent(isClosed):    # A door even happened
         if isClosed:
              printVitals('Closed')
              writeVitals('Closed')
+             postToNextcloudAnalytics('Closed')
         else:
              printVitals('Open')
              writeVitals('Open')
+             postToNextcloudAnalytics('Open')
+            
+def postToNextcloudAnalytics(position):
+    # Send X axis data
+    payload = {'dimension1': position, 'dimension2': now, 'dimension3': celcius}
+    # Verify=False is NOT the best approach though it works, as it is asking the SSL NOT to verify the self-signed certificate
+    r = requests.post(url, json=payload, headers=headers, auth=(myNextCloudUserID, myNextCloudPassword), verify=False)
+    print('Posted ', position, ' for ', now)
 
 looping = True
 mcrbt.connect()
