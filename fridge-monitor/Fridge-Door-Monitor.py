@@ -1,10 +1,11 @@
 '''
     Execute this program from the terminal with
      
-    $ python3 Fridge-Monitor.py
+    $ python3 Fridge-Door-Monitor.py
     
     to read the temperature and position of the BBC Micro:bit placed in the fridge door and connected via BLE to this program. 
-    Output the readings to the terminal, and write the temperature and time to a CSV file only when the door is opened or closed 
+    It writes the temperature and time to a CSV file when the door is opened or closed, or when the temperature is lowering
+    It also posts that data to the app end point of a Nextcloud analytics on the network, running on a Raspberry Pi.
      
     Copyright (C) 2020  L Komandur
     This program is free software: you can redistribute it and/or modify
@@ -48,6 +49,8 @@ headers = {'Content-Type': 'application/json'}
 #myNextCloudServerURL appended with the location (end point) of the analytics report
 url = 'https://<IP address>:<port no>/<report end point>'
 
+#Path to the CSV file
+csvFilePath = '/home/username-or-whatever/Desktop/microbit-ble/fridge-livedata.csv'
 
 def printDataToConsole(status):
     print('Time: ', now, ' Door Closed: ', status, ' Current X: ', mx, ' Closed X: ', closedX,' Temperature: ', celcius)
@@ -69,17 +72,15 @@ def doorEvent(isClosed):    # A door even happened
              printDataToConsole('Open')
              writeDataToCSV('Open')
              postToNextcloudAnalytics('Open')
-
-        
-                   
+                       
 def postToNextcloudAnalytics(position):
     if (position == 'Open'):
     # Send position, time
-        payload = {'dimension1': 'Door', 'dimension2': now, 'dimension3': 1}
+        payload = {'dimension1': 'Door', 'dimension2': now, 'dimension3': 5}
         # Verify=False is NOT the best approach though it works, as it is asking the SSL NOT to verify the self-signed certificate
         r = requests.post(url, json=payload, headers=headers, auth=(myNextCloudUserID, myNextCloudPassword), verify=False)
     elif (position == 'Closed'):
-        payload = {'dimension1': 'Door', 'dimension2': now, 'dimension3': -1}
+        payload = {'dimension1': 'Door', 'dimension2': now, 'dimension3': -5}
         # Verify=False is NOT the best approach though it works, as it is asking the SSL NOT to verify the self-signed certificate
         r = requests.post(url, json=payload, headers=headers, auth=(myNextCloudUserID, myNextCloudPassword), verify=False)
     
@@ -99,7 +100,7 @@ generalDoorShake = 2
 closedX = 0
 previousCelcius = 0
 
-with open('/home/username-or-whatever/Desktop/microbit-ble/fridge-livedata.csv', 'w', newline='') as file:
+with open(csvFilePath, 'w', newline='') as file:
     writer = csv.writer(file, delimiter=',')
     writer.writerow(["Door Position", "Timestamp", "Temperature"])
     while looping:
@@ -115,18 +116,18 @@ with open('/home/username-or-whatever/Desktop/microbit-ble/fridge-livedata.csv',
                 doorClosed = True # Mark door as closed.
         if mcrbt.button_a > 0 and mcrbt.button_b > 0:
                 looping = False
-                print('Exiting.')
+                print('Exiting. CSV path - ', csvFilePath)
         if looping:
                 if ( abs(mx)  >= abs(closedX) - abs(generalDoorShake) and abs(mx)  <= abs(closedX) + abs(generalDoorShake)): # door position is within the limits of general shake from closedX. abs value is taken as the sign of closedX could be anything. Means no door event occured
-                       #print('WITHIN the limits of general shake. NOT refining closedX')
+                       # print('WITHIN the limits of general shake. NOT refining closedX')
                        if not doorClosed:
-                              print('Marking Door Closed')
+                              # print('Marking Door Closed')
                               doorEvent(True)  # Fire a doorEvent() as the door was open before
                        doorClosed = True # Mark door as closed. Not a door event, but just ensuring correct status
                 if (celcius < previousCelcius): # is Colder
                        closedX = mx # if the temperature is reducing, refine the closed door position repeatedly. 
                        if not doorClosed:
-                              print('Marking Door Closed')
+                              # print('Marking Door Closed')
                               doorEvent(True)  # Fire a doorEvent() as the door was open before
                               doorClosed = True # Mark the door as closed as it is not already because the temperature is lowering.       
                        else:
@@ -135,7 +136,7 @@ with open('/home/username-or-whatever/Desktop/microbit-ble/fridge-livedata.csv',
                 #if (celcius >= previousCelcius): print('Same temperature or warmer. Do nothing as we dont know if the door is closed or open')
                 if ( abs(mx)  < abs(closedX) - abs(generalDoorShake) or abs(mx)  > abs(closedX) + abs(generalDoorShake)): 
                        # if there's more shake than general shake from closedX
-                       print('OUTSIDE the limits of general shake from closedX. Marking door as OPEN')
+                       # print('OUTSIDE the limits of general shake from closedX. Marking door as OPEN')
                        doorEvent(False) # Door is open, fire a doorEvent()
                        doorClosed = False # Mark the door as open
                 time.sleep(1) # Wait before taking the next reading
