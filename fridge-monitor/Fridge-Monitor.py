@@ -25,6 +25,7 @@ import csv
 import time
 from bluezero import microbit
 import math
+import requests
 
 mcrbt = microbit.Microbit(adapter_addr='RA:SP:BE:RR:YP:I0', # Controller address (Raspberry Pi or PC) that reads from micro:bit. 
                          device_addr='BB:CM:IC:RO:BI:T0', # micro:bit BLE address. Get from $ bluetoothctl or other similar ways.
@@ -47,30 +48,47 @@ headers = {'Content-Type': 'application/json'}
 #myNextCloudServerURL appended with the location (end point) of the analytics report
 url = 'https://<IP address>:<port no>/<report end point>'
 
-def printVitals(status):
-    print( ' Time: ', now, ' Door Closed: ', status, ' Current X: ', mx, ' Closed X: ', closedX,' Temperature: ', celcius)
+
+def printDataToConsole(status):
+    print('Time: ', now, ' Door Closed: ', status, ' Current X: ', mx, ' Closed X: ', closedX,' Temperature: ', celcius)
     
-def writeVitals(status):
+def writeDataToCSV(status):
     writer.writerow([status, now, celcius])
 
 def doorEvent(isClosed):    # A door even happened
-    if (doorClosed != isClosed):
+    if (isClosed == 'Lowering'): # Temperature is just lowering     
+        printDataToConsole('Lowering')
+        writeDataToCSV('Lowering')
+        postToNextcloudAnalytics('Lowering')
+    elif (doorClosed != isClosed): # Door status passed is different from the one stored
         if isClosed:
-             printVitals('Closed')
-             writeVitals('Closed')
+             printDataToConsole('Closed')
+             writeDataToCSV('Closed')
              postToNextcloudAnalytics('Closed')
         else:
-             printVitals('Open')
-             writeVitals('Open')
+             printDataToConsole('Open')
+             writeDataToCSV('Open')
              postToNextcloudAnalytics('Open')
-            
+
+        
+                   
 def postToNextcloudAnalytics(position):
-    # Send X axis data
-    payload = {'dimension1': position, 'dimension2': now, 'dimension3': celcius}
+    if (position == 'Open'):
+    # Send position, time
+        payload = {'dimension1': 'Door', 'dimension2': now, 'dimension3': 1}
+        # Verify=False is NOT the best approach though it works, as it is asking the SSL NOT to verify the self-signed certificate
+        r = requests.post(url, json=payload, headers=headers, auth=(myNextCloudUserID, myNextCloudPassword), verify=False)
+    elif (position == 'Closed'):
+        payload = {'dimension1': 'Door', 'dimension2': now, 'dimension3': -1}
+        # Verify=False is NOT the best approach though it works, as it is asking the SSL NOT to verify the self-signed certificate
+        r = requests.post(url, json=payload, headers=headers, auth=(myNextCloudUserID, myNextCloudPassword), verify=False)
+    
+    # Send position, time and temperature data. This will cover position = Lowering also
+    payload = {'dimension1': 'Celcius', 'dimension2': now, 'dimension3': celcius}
     # Verify=False is NOT the best approach though it works, as it is asking the SSL NOT to verify the self-signed certificate
     r = requests.post(url, json=payload, headers=headers, auth=(myNextCloudUserID, myNextCloudPassword), verify=False)
     print('Posted ', position, ' for ', now)
-
+             
 looping = True
 mcrbt.connect()
 print('Connected !! Waiting 3 seconds to take first reading')
@@ -81,7 +99,7 @@ generalDoorShake = 2
 closedX = 0
 previousCelcius = 0
 
-with open('/home/username-or-whatever/Desktop/microbit-ble/fridge-livedata-v1-3.csv', 'w', newline='') as file:
+with open('/home/username-or-whatever/Desktop/microbit-ble/fridge-livedata.csv', 'w', newline='') as file:
     writer = csv.writer(file, delimiter=',')
     writer.writerow(["Door Position", "Timestamp", "Temperature"])
     while looping:
@@ -112,8 +130,7 @@ with open('/home/username-or-whatever/Desktop/microbit-ble/fridge-livedata-v1-3.
                               doorEvent(True)  # Fire a doorEvent() as the door was open before
                               doorClosed = True # Mark the door as closed as it is not already because the temperature is lowering.       
                        else:
-                              printVitals('Lowering')
-                              writeVitals('Lowering')                              
+                              doorEvent('Lowering') # Post just the temperature to the nextcloud analytics app without the door position
                               # Temperature is lowering. Door is closed. Write some logic to track lowest temperature
                 #if (celcius >= previousCelcius): print('Same temperature or warmer. Do nothing as we dont know if the door is closed or open')
                 if ( abs(mx)  < abs(closedX) - abs(generalDoorShake) or abs(mx)  > abs(closedX) + abs(generalDoorShake)): 
