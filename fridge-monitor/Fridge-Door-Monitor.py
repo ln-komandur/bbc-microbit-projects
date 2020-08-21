@@ -53,10 +53,10 @@ url = 'https://<IP address>:<port no>/<report end point>'
 csvFilePath = '/home/username-or-whatever/Desktop/microbit-ble/fridge-livedata.csv'
 
 def printDataToConsole(status):
-    print('Time: ', now, ' Door Closed: ', status, ' Current X: ', mx, ' Closed X: ', closedX,' Temperature: ', celcius)
+    print('Time: ', now, ' Door Closed: ', status, ' Current X: ', mx, ' Closed X: ', closedX,' Temperature: ', celsius)
     
 def writeDataToCSV(status):
-    writer.writerow([status, now, celcius])
+    writer.writerow([status, now, celsius])
 
 def doorEvent(isClosed):    # A door even happened
     if (isClosed == 'Lowering'): # Temperature is just lowering     
@@ -72,7 +72,9 @@ def doorEvent(isClosed):    # A door even happened
              printDataToConsole('Open')
              writeDataToCSV('Open')
              postToNextcloudAnalytics('Open')
-                       
+
+        
+                   
 def postToNextcloudAnalytics(position):
     if (position == 'Open'):
     # Send position, time
@@ -85,20 +87,25 @@ def postToNextcloudAnalytics(position):
         r = requests.post(url, json=payload, headers=headers, auth=(myNextCloudUserID, myNextCloudPassword), verify=False)
     
     # Send position, time and temperature data. This will cover position = Lowering also
-    payload = {'dimension1': 'Celcius', 'dimension2': now, 'dimension3': celcius}
+    payload = {'dimension1': 'Celsius', 'dimension2': now, 'dimension3': celsius}
     # Verify=False is NOT the best approach though it works, as it is asking the SSL NOT to verify the self-signed certificate
     r = requests.post(url, json=payload, headers=headers, auth=(myNextCloudUserID, myNextCloudPassword), verify=False)
     print('Posted ', position, ' for ', now)
              
 looping = True
 mcrbt.connect()
-print('Connected !! Waiting 3 seconds to take first reading')
+print('---------------')
+print('Hello IOT World')
+print('---------------')
+
+print('Connected !! Press both buttons anytime to stop monitoring')
+print('Waiting 3 seconds to take first reading')
 time.sleep(3) # Wait before taking the first reading
-print('Taking readings. Press both buttons to stop monitoring')
+print('Started taking readings on temperature and door position')
 doorClosed = False
 generalDoorShake = 2
 closedX = 0
-previousCelcius = 0
+previousCelsius = 0
 
 with open(csvFilePath, 'w', newline='') as file:
     writer = csv.writer(file, delimiter=',')
@@ -107,7 +114,7 @@ with open(csvFilePath, 'w', newline='') as file:
         now = datetime.now().strftime('%H:%M:%S')
         mx, my, mz = mcrbt.magnetometer
         time.sleep(1) # Wait before taking the temperature
-        celcius = mcrbt.temperature
+        celsius = mcrbt.temperature
 
         if closedX == 0: # this is to help the first time the readings are taken. Store the initial door position and mark door as closed
                 closedX = mx
@@ -124,7 +131,7 @@ with open(csvFilePath, 'w', newline='') as file:
                               # print('Marking Door Closed')
                               doorEvent(True)  # Fire a doorEvent() as the door was open before
                        doorClosed = True # Mark door as closed. Not a door event, but just ensuring correct status
-                if (celcius < previousCelcius): # is Colder
+                if (celsius < previousCelsius): # is Colder
                        closedX = mx # if the temperature is reducing, refine the closed door position repeatedly. 
                        if not doorClosed:
                               # print('Marking Door Closed')
@@ -133,13 +140,13 @@ with open(csvFilePath, 'w', newline='') as file:
                        else:
                               doorEvent('Lowering') # Post just the temperature to the nextcloud analytics app without the door position
                               # Temperature is lowering. Door is closed. Write some logic to track lowest temperature
-                #if (celcius >= previousCelcius): print('Same temperature or warmer. Do nothing as we dont know if the door is closed or open')
+                #if (celsius >= previousCelsius): print('Same temperature or warmer. Do nothing as we dont know if the door is closed or open')
                 if ( abs(mx)  < abs(closedX) - abs(generalDoorShake) or abs(mx)  > abs(closedX) + abs(generalDoorShake)): 
                        # if there's more shake than general shake from closedX
                        # print('OUTSIDE the limits of general shake from closedX. Marking door as OPEN')
                        doorEvent(False) # Door is open, fire a doorEvent()
                        doorClosed = False # Mark the door as open
                 time.sleep(1) # Wait before taking the next reading
-                previousCelcius = celcius # Set previous reading to current value for comparing in the next cycle 
+                previousCelsius = celsius # Set previous reading to current value for comparing in the next cycle 
               
 mcrbt.disconnect()
